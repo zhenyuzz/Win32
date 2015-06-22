@@ -247,6 +247,75 @@ BOOL MoveTetrisRight()
     return TRUE;
 }
 
+BOOL MoveTetrisToBottom()
+{
+    int i;
+    BOOL canMoveDown = TRUE;
+    BOOL tetrisMoved = FALSE;
+    while (canMoveDown)
+    {
+        for (i=0; i!=squarePerTetris; ++i)
+        {
+            if (tetris.squares[i].row >= rowNumber ||
+                    squareFilled[tetris.squares[i].row][tetris.squares[i].col-1])
+            {
+                canMoveDown = FALSE;
+                break;
+            }
+        }
+        if (canMoveDown)
+        {
+            for (i=0; i!=squarePerTetris; ++i)
+            {
+                ++tetris.squares[i].row;
+            }
+            tetrisMoved = TRUE;
+        }
+    }
+    return tetrisMoved;
+}
+
+BOOL RotateSquareCloskwize(
+        struct SquarePosition *pSquare, struct SquarePosition circle)
+{
+    struct SquarePosition temp;
+    temp.row = circle.row + (pSquare->col - circle.col);
+    temp.col = circle.col + (circle.row - pSquare->row);
+    if (temp.row < 1 || temp.row > rowNumber
+            || temp.col < 1 || temp.col > colNumber)
+    {
+        return FALSE;
+    }
+    else
+    {
+        *pSquare = temp;
+        return TRUE;
+    }
+}
+
+BOOL RotateTetrisClockwize()
+{
+    struct SquarePosition circle = tetris.squares[0];
+    struct TetrisPosition temp = tetris;
+    int i=1;
+    for (; i!=squarePerTetris; ++i)
+    {
+        circle.row += tetris.squares[i].row;
+        circle.col += tetris.squares[i].col;
+    }
+    circle.row /= squarePerTetris;
+    circle.col /= squarePerTetris;
+    for (i=0; i!=squarePerTetris; ++i)
+    {
+        if (!RotateSquareCloskwize(&temp.squares[i], circle))
+        {
+            return FALSE;
+        }
+    }
+    tetris = temp;
+    return TRUE;
+}
+
 BOOL ClearRow(int row)
 {
     int j = 0;
@@ -300,13 +369,31 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case WM_KEYDOWN:
             if (wParam == VK_LEFT)
             {
-                MoveTetrisLeft();
-                InvalidateScene();
+                if (MoveTetrisLeft())
+                {
+                    InvalidateScene();
+                }
             }
             else if (wParam == VK_RIGHT)
             {
-                MoveTetrisRight();
-                InvalidateScene();
+                if (MoveTetrisRight())
+                {
+                    InvalidateScene();
+                }
+            }
+            else if (wParam == VK_DOWN)
+            {
+                if (MoveTetrisToBottom())
+                {
+                    InvalidateScene();
+                }
+            }
+            else if (wParam == VK_UP)
+            {
+                if (RotateTetrisClockwize())
+                {
+                    InvalidateScene();
+                }
             }
             break;
         case WM_TIMER:
