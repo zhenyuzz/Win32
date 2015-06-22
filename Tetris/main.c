@@ -1,11 +1,11 @@
 #include <windows.h>
 
 HINSTANCE hInst;
+HWND hWnd;
 HBRUSH hBackgroundBrush;
 HBRUSH hSquareBrush;
 HPEN hSquareBorderPen;
 HPEN hSceneBorderPen;
-/* HWND hWnd; */
 HDC hDC;
 HDC hPaintDC;
 HBITMAP hBitmap;
@@ -14,8 +14,8 @@ LPCSTR pWindowClass = "Tetris";
 static const COLORREF backgroundColor = RGB(  0,   0,   0);
 static const COLORREF borderColor     = RGB(255, 255, 255);
 static const COLORREF squareColor     = RGB(255,   0,   0);
-static const int width            = 640;
-static const int height           = 640;
+static const int width            = 480;
+static const int height           = 540;
 static const int sceneBorder      = 2;
 static const int squareBorder     = 1;
 static const int squareSideLength = 20;
@@ -33,8 +33,8 @@ struct TetrisPosition
 {
     struct SquarePosition squares[squarePerTetris];
 } tetris;
-enum {rowNumber = 25};
-enum {colNumber = 20};
+enum {rowNumber = 20};
+enum {colNumber = 15};
 BOOL squareFilled[rowNumber][colNumber];
 int minFilledRow, minFilledCol, maxFilledCol;
 
@@ -48,36 +48,10 @@ RECT GetRect(int minRow, int minCol, int maxRow, int maxCol)
     return rect;
 }
 
-RECT GetTetrisRect()
+void InvalidateScene()
 {
-    int maxRow, minRow = tetris.squares[0].row;
-    int maxCol, minCol = tetris.squares[0].col;
-    int i = 1;
-    for (; i!=squarePerTetris; ++i)
-    {
-        if (tetris.squares[i].row > maxRow)
-        {
-            maxRow = tetris.squares[i].row;
-        }
-        else if (tetris.squares[i].row < minRow)
-        {
-            minRow = tetris.squares[i].row;
-        }
-        if (tetris.squares[i].col > maxCol)
-        {
-            maxCol = tetris.squares[i].col;
-        }
-        else if (tetris.squares[i].col < minCol)
-        {
-            minCol = tetris.squares[i].col;
-        }
-    }
-    return GetRect(minRow, minCol, maxRow, maxCol);
-}
-
-RECT GetFilledSquaresRect()
-{
-    return GetRect(minFilledRow, rowNumber, minFilledCol, maxFilledCol);
+    RECT rect = GetRect(1, 1, rowNumber, colNumber);
+    InvalidateRect(hWnd, &rect, FALSE);
 }
 
 void GenerateTetris()
@@ -215,9 +189,13 @@ BOOL MoveTetrisDown()
     int i = 0;
     for (; i!=squarePerTetris; ++i)
     {
-         if ((temp.squares[i].row < rowNumber) &&
-        !squareFilled[temp.squares[i].row][temp.squares[i].col-1])
+        if (temp.squares[i].row < rowNumber)
         {
+            if (temp.squares[i].row > 0 &&
+                    squareFilled[temp.squares[i].row][temp.squares[i].col-1])
+            {
+                return FALSE;
+            }
             ++temp.squares[i].row;
         }
         else
@@ -226,6 +204,77 @@ BOOL MoveTetrisDown()
         }
     }
     tetris = temp;
+    return TRUE;
+}
+
+BOOL MoveTetrisLeft()
+{
+    struct TetrisPosition temp = tetris;
+    int i = 0;
+    for (; i!=squarePerTetris; ++i)
+    {
+         if ((temp.squares[i].col > 1) &&
+        !squareFilled[temp.squares[i].row][temp.squares[i].col-1])
+        {
+            --temp.squares[i].col;
+        }
+        else
+        {
+            return FALSE;
+        }
+    }
+    tetris = temp;
+    return TRUE;
+}
+
+BOOL MoveTetrisRight()
+{
+    struct TetrisPosition temp = tetris;
+    int i = 0;
+    for (; i!=squarePerTetris; ++i)
+    {
+         if ((temp.squares[i].col < colNumber) &&
+        !squareFilled[temp.squares[i].row][temp.squares[i].col+1])
+        {
+            ++temp.squares[i].col;
+        }
+        else
+        {
+            return FALSE;
+        }
+    }
+    tetris = temp;
+    return TRUE;
+}
+
+BOOL ClearRow(int row)
+{
+    int j = 0;
+    for (; j!=colNumber; ++j)
+    {
+        if (!squareFilled[row-1][j])
+        {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+BOOL MoveFilledSquaresDown(int maxRow)
+{
+    int i = maxRow;
+    int j = 0;
+    if (maxRow >= rowNumber || maxRow < 1)
+    {
+        return FALSE;
+    }
+    for (; i!=0; --i)
+    {
+        for (j=0; j!=colNumber; ++j)
+        {
+            squareFilled[i][j] = squareFilled[i-1][j];
+        }
+    }
     return TRUE;
 }
 
@@ -248,11 +297,35 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             GenerateTetris();
             SetTimer(hWnd, timerID, tetrisMoveInterval, NULL);
             break;
+        case WM_KEYDOWN:
+            if (wParam == VK_LEFT)
+            {
+                MoveTetrisLeft();
+                InvalidateScene();
+            }
+            else if (wParam == VK_RIGHT)
+            {
+                MoveTetrisRight();
+                InvalidateScene();
+            }
+            break;
         case WM_TIMER:
             if (!MoveTetrisDown())
             {
                 if (FillSquares())
                 {
+                    int row = rowNumber;
+                    while (row != 0)
+                    {
+                        if (ClearRow(row))
+                        {
+                            MoveFilledSquaresDown(row-1);
+                        }
+                        else
+                        {
+                            --row;
+                        }
+                    }
                     GenerateTetris();
                 }
                 else
@@ -261,10 +334,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                     break;
                 }
             }
-            RECT rect = GetTetrisRect();
-            InvalidateRect(hWnd, &rect, TRUE);
-            rect = GetFilledSquaresRect();
-            InvalidateRect(hWnd, &rect, TRUE);
+            InvalidateScene();
             break;
         case WM_PAINT:
             hdc = BeginPaint(hWnd, &ps);
@@ -302,7 +372,6 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-    HWND hWnd;
     hInst = hInstance;
     hWnd = CreateWindow(pWindowClass, pTitle, WS_OVERLAPPEDWINDOW,
                         CW_USEDEFAULT, CW_USEDEFAULT, width, height, NULL, NULL,
