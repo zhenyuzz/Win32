@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <stdlib.h>
 
 HINSTANCE hInst;
 HWND hWnd;
@@ -57,10 +58,45 @@ void InvalidateScene()
 void GenerateTetris()
 {
     int i = 0;
+    static struct TetrisPosition IShape = {{
+        {-3, colNumber / 2},
+        {-2, colNumber / 2},
+        {-1, colNumber / 2},
+        {0, colNumber / 2},
+    }};
+    static struct TetrisPosition OShape = {{
+        {-1, colNumber / 2 - 1},
+        {0, colNumber / 2 - 1},
+        {-1, colNumber / 2},
+        {0, colNumber / 2},
+    }};
+    static struct TetrisPosition LShape = {{
+        {-2, colNumber / 2 - 1},
+        {-1, colNumber / 2 - 1},
+        {0, colNumber / 2 - 1},
+        {0, colNumber / 2},
+    }};
+    static struct TetrisPosition TShape = {{
+        {-1, colNumber / 2 - 1},
+        {-1, colNumber / 2},
+        {0, colNumber / 2},
+        {-1, colNumber / 2 + 1},
+    }};
+    static struct TetrisPosition ZShape = {{
+        {-1, colNumber / 2 - 1},
+        {-1, colNumber / 2},
+        {0, colNumber / 2},
+        {0, colNumber / 2 + 1},
+    }};
+    static struct TetrisPosition *pShapes[] =
+    {&IShape, &OShape, &LShape, &TShape, &ZShape};
+    int index = (int)(rand()*(sizeof(pShapes)/sizeof(pShapes[0]))/(RAND_MAX+1.0f));
+
+    struct TetrisPosition *pShape = pShapes[index];
     for (; i!= squarePerTetris; ++i)
     {
-        tetris.squares[i].col = colNumber / 2;
-        tetris.squares[i].row = i-3;
+        tetris.squares[i].row = pShape->squares[i].row;
+        tetris.squares[i].col = pShape->squares[i].col;
     }
 }
 
@@ -347,91 +383,117 @@ BOOL MoveFilledSquaresDown(int maxRow)
     return TRUE;
 }
 
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT OnCreate()
+{
+    int i, j;
+    srand(time(NULL));
+    for (i=0; i!=rowNumber; ++i)
+    {
+        for (j=0; j!=colNumber; ++j)
+        {
+            squareFilled[i][j] = FALSE;
+        }
+    }
+    GenerateTetris();
+    return 0;
+}
+
+LRESULT OnDestroy()
+{
+    KillTimer(hWnd, timerID);
+    PostQuitMessage(0);
+}
+
+LRESULT OnPaint()
 {
     PAINTSTRUCT ps;
     HDC hdc;
+    hdc = BeginPaint(hWnd, &ps);
+    OnDraw(hdc);
+    EndPaint(hWnd, &ps);
+    return 0;
+}
 
-    int i, j;
-    switch (message)
+LRESULT OnTimer()
+{
+    if (!MoveTetrisDown())
     {
-        case WM_CREATE:
-            for (i=0; i!=rowNumber; ++i)
+        if (FillSquares())
+        {
+            int row = rowNumber;
+            while (row != 0)
             {
-                for (j=0; j!=colNumber; ++j)
+                if (ClearRow(row))
                 {
-                    squareFilled[i][j] = FALSE;
-                }
-            }
-            GenerateTetris();
-            SetTimer(hWnd, timerID, tetrisMoveInterval, NULL);
-            break;
-        case WM_KEYDOWN:
-            if (wParam == VK_LEFT)
-            {
-                if (MoveTetrisLeft())
-                {
-                    InvalidateScene();
-                }
-            }
-            else if (wParam == VK_RIGHT)
-            {
-                if (MoveTetrisRight())
-                {
-                    InvalidateScene();
-                }
-            }
-            else if (wParam == VK_DOWN)
-            {
-                if (MoveTetrisToBottom())
-                {
-                    InvalidateScene();
-                }
-            }
-            else if (wParam == VK_UP)
-            {
-                if (RotateTetrisClockwize())
-                {
-                    InvalidateScene();
-                }
-            }
-            break;
-        case WM_TIMER:
-            if (!MoveTetrisDown())
-            {
-                if (FillSquares())
-                {
-                    int row = rowNumber;
-                    while (row != 0)
-                    {
-                        if (ClearRow(row))
-                        {
-                            MoveFilledSquaresDown(row-1);
-                        }
-                        else
-                        {
-                            --row;
-                        }
-                    }
-                    GenerateTetris();
+                    MoveFilledSquaresDown(row-1);
                 }
                 else
                 {
-                    DestroyWindow(hWnd);
-                    break;
+                    --row;
                 }
             }
+            GenerateTetris();
+        }
+        else
+        {
+            DestroyWindow(hWnd);
+            return;
+        }
+    }
+    InvalidateScene();
+    return 0;
+}
+
+LRESULT OnKeyDown(WPARAM wParam)
+{
+    if (wParam == VK_LEFT)
+    {
+        if (MoveTetrisLeft())
+        {
             InvalidateScene();
+        }
+    }
+    else if (wParam == VK_RIGHT)
+    {
+        if (MoveTetrisRight())
+        {
+            InvalidateScene();
+        }
+    }
+    else if (wParam == VK_DOWN)
+    {
+        if (MoveTetrisToBottom())
+        {
+            InvalidateScene();
+        }
+    }
+    else if (wParam == VK_UP)
+    {
+        if (RotateTetrisClockwize())
+        {
+            InvalidateScene();
+        }
+    }
+}
+
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+        case WM_CREATE:
+            return OnCreate();
+            break;
+        case WM_KEYDOWN:
+            return OnKeyDown(wParam);
+            break;
+        case WM_TIMER:
+            return OnTimer();
             break;
         case WM_PAINT:
-            hdc = BeginPaint(hWnd, &ps);
-            OnDraw(hdc);
-            EndPaint(hWnd, &ps);
+            return OnPaint();
             break;
         case WM_DESTROY:
-            KillTimer(hWnd, timerID);
-            PostQuitMessage(0);
-            break;
+            return OnDestroy();
         default:
             return DefWindowProc(hWnd, message, wParam, lParam);
     }
@@ -468,6 +530,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         return FALSE;
     }
 
+    SetTimer(hWnd, timerID, tetrisMoveInterval, NULL);
+
     ShowWindow(hWnd, nCmdShow);
     UpdateWindow(hWnd);
 
@@ -494,3 +558,4 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     }
     return (int)msg.wParam;
 }
+
