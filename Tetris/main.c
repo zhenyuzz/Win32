@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 HINSTANCE hInst;
@@ -7,22 +8,25 @@ HBRUSH    hBackgroundBrush;
 HBRUSH    hSquareBrush;
 HPEN      hSquareBorderPen;
 HPEN      hSceneBorderPen;
+HFONT     hTextFont;
+HFONT     hGameOverFont;
 HDC       hDC;
 HDC       hPaintDC;
 HBITMAP   hBitmap;
 LPCSTR pTitle       = "Tetris";
 LPCSTR pWindowClass = "Tetris";
+static const COLORREF textColor       = RGB(255, 255, 255);
+static const COLORREF gameOverColor   = RGB(255,   0,   0);
 static const COLORREF backgroundColor = RGB(  0,   0,   0);
 static const COLORREF borderColor     = RGB(255, 255, 255);
-static const COLORREF squareColor     = RGB(255,   0,   0);
-static const int width              = 480;
+static const COLORREF squareColor     = RGB(  0, 255,   0);
+static const int width              = 400;
 static const int height             = 480;
 static const int sceneBorder        = 2;
 static const int squareBorder       = 1;
 static const int squareSideLength   = 20;
-static const int topPadding         = 22;
-static const int leftPadding        = 22;
-static const int tetrisMoveInterval = 500;
+static const int topPadding         = 20;
+static const int leftPadding        = 20;
 static const int timerID            = 2015;
 struct SquarePosition
 {
@@ -36,6 +40,8 @@ struct TetrisPosition
 } tetris;
 int shape;
 int direction;
+int nextShape;
+int nextDirection;
 enum {rowNum = 20};
 enum {colNum = 10};
 BOOL squareFilled[rowNum][colNum];
@@ -88,9 +94,23 @@ pXShapes shapesArray[] =
 {&IShape, &OShape, &TShape, &LShape, &JShape, &ZShape, &SShape};
 static const int directionNum = 4;
 
+int level;
+int points;
+int lines;
+int moveInterval;
+static const int linesToUpgrade   = 10;
+static const int highestLevel     = 5;
+static const int originalInterval = 500;
+static const int intervalStep     = 100;
+static const int pointsIncrease[] = {5, 15, 30, 50};
+LPCSTR pNext     = "NEXT";
+LPCSTR pLevel    = "LEVEL";
+LPCSTR pPoints   = "POINTS";
+LPCSTR pGameOver = "GAME OVER!";
+BOOL paused = FALSE;
+
 #ifdef DEBUG
 #define OutputString(string) OutputDebugString(string)
-#include <stdio.h>
 void _OutputTetrisPosition()
 {
     char buffer[100];
@@ -103,7 +123,6 @@ void _OutputTetrisPosition()
     OutputDebugString(buffer);
 }
 #define OutputTetrisPosition() _OutputTetrisPosition()
-BOOL paused = FALSE;
 #else
 #define OutputString(string)
 #define OutputTetrisPosition()
@@ -125,24 +144,82 @@ void InvalidateScene()
     InvalidateRect(hWnd, &rect, FALSE);
 }
 
+void InvalidateInfo()
+{
+    const int sceneWidth = colNum * squareSideLength;
+    RECT rect = {leftPadding*2+sceneWidth, topPadding,
+        width-leftPadding, height-topPadding};
+    InvalidateRect(hWnd, &rect, FALSE);
+}
+
 void GenerateTetris()
 {
     int i = 0;
-    shape = (int)(1.0*rand()*(sizeof(shapesArray)/sizeof(shapesArray[0]))/(RAND_MAX+1.0));
+    shape = nextShape;
+    direction = nextDirection;
+    nextShape = (int)(1.0*rand()*
+            (sizeof(shapesArray)/sizeof(shapesArray[0]))/(RAND_MAX+1.0));
+    nextDirection = (int)(1.0*rand()*directionNum/(RAND_MAX+1.0));
     const pXShapes pShapes = shapesArray[shape];
-    direction = (int)(rand()*4.0/(RAND_MAX+1.0));
     tetris = (*pShapes)[direction];
 }
 
 void InitDraw(HDC hDC)
 {
     hPaintDC = CreateCompatibleDC(hDC);
-    hBitmap = CreateCompatibleBitmap(hDC, width, height);
+    hBitmap  = CreateCompatibleBitmap(hDC, width, height);
     SelectObject(hPaintDC, hBitmap);
     hBackgroundBrush = CreateSolidBrush(backgroundColor);
-    hSceneBorderPen = CreatePen(PS_SOLID, sceneBorder, borderColor);
+    hSceneBorderPen  = CreatePen(PS_SOLID, sceneBorder, borderColor);
     hSquareBorderPen = CreatePen(PS_SOLID, squareBorder, borderColor);
-    hSquareBrush = CreateSolidBrush(squareColor);
+    hSquareBrush     = CreateSolidBrush(squareColor);
+    hTextFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, 0, ANSI_CHARSET,
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, PROOF_QUALITY,
+            DEFAULT_PITCH | FF_SWISS, "Arial");
+    hGameOverFont = CreateFont(32, 0, 0, 0, FW_NORMAL, FALSE, FALSE, 0, ANSI_CHARSET,
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, PROOF_QUALITY,
+            DEFAULT_PITCH | FF_SWISS, "Arial");
+    SetBkMode(hPaintDC, TRANSPARENT);
+}
+
+void DrawGameOver()
+{
+    SetTextCharacterExtra(hPaintDC, 1);
+    SelectObject(hPaintDC, hGameOverFont);
+    SetTextColor(hPaintDC, gameOverColor);
+    RECT rect = GetRect(1, 1, rowNum, colNum);
+    DrawText(hPaintDC, pGameOver, -1, &rect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
+}
+
+void DrawInfo()
+{
+    SetTextCharacterExtra(hPaintDC, 5);
+    SelectObject(hPaintDC, hTextFont);
+    SetTextColor(hPaintDC, textColor);
+    const int sceneWidth = colNum * squareSideLength;
+    RECT infoRect = {leftPadding+sceneWidth, topPadding,
+        width-leftPadding, height-topPadding};
+    FillRect(hPaintDC, &infoRect, hBackgroundBrush);
+    int textHeight = (infoRect.bottom-infoRect.top) / 8;
+    int textWidth = infoRect.right - infoRect.left;
+    char buffer[10];
+    RECT textRect = {infoRect.left, infoRect.top, infoRect.left+textWidth,
+        infoRect.top+textHeight};
+    DrawText(hPaintDC, pNext, -1, &textRect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
+    textRect.top = textRect.top + 3 * textHeight;
+    textRect.bottom = textRect.top + textHeight;
+    DrawText(hPaintDC, pLevel, -1, &textRect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
+    textRect.top = textRect.top + 1 * textHeight;
+    textRect.bottom = textRect.top + textHeight;
+    sprintf(buffer, "%d", level);
+    DrawText(hPaintDC, buffer, -1, &textRect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
+    textRect.top = textRect.top + 1 * textHeight;
+    textRect.bottom = textRect.top + textHeight;
+    DrawText(hPaintDC, pPoints, -1, &textRect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
+    textRect.top = textRect.top + 1 * textHeight;
+    textRect.bottom = textRect.top + textHeight;
+    sprintf(buffer, "%d", points);
+    DrawText(hPaintDC, buffer, -1, &textRect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
 }
 
 void DrawScene()
@@ -158,7 +235,8 @@ void DrawScene()
     points[2].y = topPadding+sceneHeight+squareBorder;
     points[3].x = points[0].x;
     points[3].y = points[2].y;
-    points[4] = points[0];
+    points[4].x = points[0].x;
+    points[4].y = points[0].y-1;
     SelectObject(hPaintDC, hSceneBorderPen);
     SelectObject(hPaintDC, hBackgroundBrush);
     Polygon(hPaintDC, points, 5);
@@ -216,12 +294,20 @@ void OnDraw(HDC hDC)
         initialed = TRUE;
     }
 
+    DrawInfo();
     DrawScene();
     DrawTetris();
     DrawFilledSquares();
+#ifndef DEBUG
+    if (paused)
+    {
+        DrawGameOver();
+    }
+#endif
 
     BitBlt(hDC, 0, 0, width, height, hPaintDC, 0, 0, SRCCOPY);
 }
+
 BOOL IsSquareInScene(const struct SquarePosition *pSquare)
 {
     return pSquare->row > 0 && pSquare->row <= rowNum
@@ -354,7 +440,11 @@ BOOL MoveTetrisToBottom()
     {
         for (i=0; i!=squarePerTetris; ++i)
         {
-            if (tetris.squares[i].row >= rowNum ||
+            if (tetris.squares[i].row < 1)
+            {
+                continue;
+            }
+            else if (tetris.squares[i].row >= rowNum ||
                     squareFilled[tetris.squares[i].row][tetris.squares[i].col-1])
             {
                 canMoveDown = FALSE;
@@ -408,10 +498,12 @@ BOOL MoveFilledSquaresDown(int maxRow)
     return TRUE;
 }
 
-LRESULT OnCreate()
+void OnStart()
 {
     int i, j;
-    srand(time(NULL));
+    level = 1;
+    points = 0;
+    moveInterval = originalInterval;
     for (i=0; i!=rowNum; ++i)
     {
         for (j=0; j!=colNum; ++j)
@@ -419,7 +511,19 @@ LRESULT OnCreate()
             squareFilled[i][j] = FALSE;
         }
     }
+    nextShape = (int)(1.0*rand()*
+            (sizeof(shapesArray)/sizeof(shapesArray[0]))/(RAND_MAX+1.0));
+    nextDirection = (int)(1.0*rand()*directionNum/(RAND_MAX+1.0));
     GenerateTetris();
+    paused = FALSE;
+    InvalidateInfo();
+    InvalidateScene();
+}
+
+LRESULT OnCreate()
+{
+    srand(time(NULL));
+    OnStart();
     return 0;
 }
 
@@ -427,6 +531,14 @@ LRESULT OnDestroy()
 {
     KillTimer(hWnd, timerID);
     PostQuitMessage(0);
+    DeleteObject(hBackgroundBrush);
+    DeleteObject(hSquareBrush);
+    DeleteObject(hSceneBorderPen);
+    DeleteObject(hSquareBorderPen);
+    DeleteObject(hTextFont);
+    DeleteObject(hBitmap);
+    DeleteDC(hPaintDC);
+    DeleteDC(hDC);
 }
 
 LRESULT OnPaint()
@@ -441,21 +553,29 @@ LRESULT OnPaint()
 
 LRESULT OnTimer()
 {
-#ifdef DEBUG
     if (paused)
     {
         return 0;
     }
-#endif
     if (!MoveTetrisDown())
     {
         if (FillSquares())
         {
             int row = rowNum;
+            int cleared = 0;
             while (row != 0)
             {
                 if (ClearRow(row))
                 {
+                    ++cleared;
+                    ++lines;
+                    if (lines % linesToUpgrade == 0 && level < highestLevel)
+                    {
+                        ++level;
+                        KillTimer(hWnd, timerID);
+                        moveInterval = originalInterval-(level-1)*intervalStep;
+                        SetTimer(hWnd, timerID, moveInterval, NULL);
+                    }
                     MoveFilledSquaresDown(row-1);
                 }
                 else
@@ -463,12 +583,16 @@ LRESULT OnTimer()
                     --row;
                 }
             }
+            if (cleared > 0)
+            {
+                points += level * pointsIncrease[cleared-1];
+            }
+            InvalidateInfo();
             GenerateTetris();
         }
         else
         {
-            DestroyWindow(hWnd);
-            return 0;
+            paused = TRUE;
         }
     }
     InvalidateScene();
@@ -477,39 +601,48 @@ LRESULT OnTimer()
 
 LRESULT OnKeyDown(WPARAM wParam)
 {
+    if (VK_ESCAPE == wParam)
+    {
+        DestroyWindow(hWnd);
+        return 0;
+    }
 #ifdef DEBUG
     if (VK_SPACE == wParam)
     {
         paused = !paused;
         return 0;
     }
+#endif
     if (paused)
     {
+        if (VK_RETURN == wParam)
+        {
+            OnStart();
+        }
         return 0;
     }
-#endif
-    if (wParam == VK_LEFT)
+    if (VK_LEFT == wParam)
     {
         if (MoveTetrisLeft())
         {
             InvalidateScene();
         }
     }
-    else if (wParam == VK_RIGHT)
+    else if (VK_RIGHT == wParam)
     {
         if (MoveTetrisRight())
         {
             InvalidateScene();
         }
     }
-    else if (wParam == VK_DOWN)
+    else if (VK_DOWN == wParam)
     {
         if (MoveTetrisToBottom())
         {
             InvalidateScene();
         }
     }
-    else if (wParam == VK_UP)
+    else if (VK_UP == wParam)
     {
         if (RotateTetrisClockwize())
         {
@@ -572,7 +705,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         return FALSE;
     }
 
-    SetTimer(hWnd, timerID, tetrisMoveInterval, NULL);
+    SetTimer(hWnd, timerID, moveInterval, NULL);
 
     ShowWindow(hWnd, nCmdShow);
     UpdateWindow(hWnd);
