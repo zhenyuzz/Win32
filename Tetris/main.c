@@ -99,14 +99,15 @@ int points;
 int lines;
 int moveInterval;
 static const int linesToUpgrade   = 10;
-static const int highestLevel     = 5;
+static const int highestLevel     = 10;
 static const int originalInterval = 500;
-static const int intervalStep     = 100;
+static const int intervalStep     = 50;
 static const int pointsIncrease[] = {5, 15, 30, 50};
 LPCSTR pNext     = "NEXT";
 LPCSTR pLevel    = "LEVEL";
 LPCSTR pPoints   = "POINTS";
 LPCSTR pGameOver = "GAME OVER!";
+BOOL stopped = FALSE;
 BOOL paused = FALSE;
 
 #ifdef DEBUG
@@ -191,6 +192,38 @@ void DrawGameOver()
     DrawText(hPaintDC, pGameOver, -1, &rect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
 }
 
+void DrawNextTetris()
+{
+    int i=0;
+    const struct TetrisPosition nextTetris =
+        (*shapesArray[nextShape])[nextDirection];
+    int row, col;
+    const int sceneWidth = colNum * squareSideLength;
+    RECT infoRect = {leftPadding+sceneWidth, topPadding,
+        width-leftPadding, height-topPadding};
+    int textHeight = (infoRect.bottom-infoRect.top) / 8;
+    int originalX = infoRect.left + (width-infoRect.left)/2 - 2*squareSideLength;
+    int originalY = infoRect.top + textHeight;
+
+    SelectObject(hPaintDC, hSquareBorderPen);
+    SelectObject(hPaintDC, hSquareBrush);
+    for (; i != squarePerTetris; ++i) {
+        row = nextTetris.squares[i].row + 4;
+        col = nextTetris.squares[i].col - colNum/2 + 2;
+        POINT points[5];
+        points[0].x = originalX+(col-1)*squareSideLength;
+        points[0].y = originalY+(row-1)*squareSideLength;
+        points[1].x = originalX+col*squareSideLength;
+        points[1].y = points[0].y;
+        points[2].x = points[1].x;
+        points[2].y = originalY+row*squareSideLength;
+        points[3].x = points[0].x;
+        points[3].y = points[2].y;
+        points[4] = points[0];
+        Polygon(hPaintDC, points, 5);
+    }
+}
+
 void DrawInfo()
 {
     SetTextCharacterExtra(hPaintDC, 5);
@@ -220,6 +253,7 @@ void DrawInfo()
     textRect.bottom = textRect.top + textHeight;
     sprintf(buffer, "%d", points);
     DrawText(hPaintDC, buffer, -1, &textRect, DT_SINGLELINE|DT_CENTER|DT_VCENTER);
+    DrawNextTetris();
 }
 
 void DrawScene()
@@ -299,7 +333,7 @@ void OnDraw(HDC hDC)
     DrawTetris();
     DrawFilledSquares();
 #ifndef DEBUG
-    if (paused)
+    if (stopped)
     {
         DrawGameOver();
     }
@@ -515,9 +549,10 @@ void OnStart()
             (sizeof(shapesArray)/sizeof(shapesArray[0]))/(RAND_MAX+1.0));
     nextDirection = (int)(1.0*rand()*directionNum/(RAND_MAX+1.0));
     GenerateTetris();
-    paused = FALSE;
+    stopped = FALSE;
     InvalidateInfo();
     InvalidateScene();
+    SetTimer(hWnd, timerID, moveInterval, NULL);
 }
 
 LRESULT OnCreate()
@@ -553,7 +588,7 @@ LRESULT OnPaint()
 
 LRESULT OnTimer()
 {
-    if (paused)
+    if (stopped || paused)
     {
         return 0;
     }
@@ -592,7 +627,8 @@ LRESULT OnTimer()
         }
         else
         {
-            paused = TRUE;
+            stopped = TRUE;
+            KillTimer(hWnd, timerID);
         }
     }
     InvalidateScene();
@@ -604,24 +640,16 @@ LRESULT OnKeyDown(WPARAM wParam)
     if (VK_ESCAPE == wParam)
     {
         DestroyWindow(hWnd);
-        return 0;
     }
-#ifdef DEBUG
-    if (VK_SPACE == wParam)
+    else if (VK_RETURN == wParam)
+    {
+        OnStart();
+    }
+    else if (VK_SPACE == wParam)
     {
         paused = !paused;
-        return 0;
     }
-#endif
-    if (paused)
-    {
-        if (VK_RETURN == wParam)
-        {
-            OnStart();
-        }
-        return 0;
-    }
-    if (VK_LEFT == wParam)
+    else if (VK_LEFT == wParam)
     {
         if (MoveTetrisLeft())
         {
@@ -649,6 +677,7 @@ LRESULT OnKeyDown(WPARAM wParam)
             InvalidateScene();
         }
     }
+    return 0;
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
