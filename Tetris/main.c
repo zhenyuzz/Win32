@@ -34,10 +34,59 @@ struct TetrisPosition
 {
     struct SquarePosition squares[squarePerTetris];
 } tetris;
-enum {rowNumber = 20};
-enum {colNumber = 10};
-BOOL squareFilled[rowNumber][colNumber];
+int shape;
+int direction;
+enum {rowNum = 20};
+enum {colNum = 10};
+BOOL squareFilled[rowNum][colNum];
 int minFilledRow, minFilledCol, maxFilledCol;
+
+static const struct TetrisPosition IShape[] = {
+    {{{-3, colNum/2}, {-2, colNum/2}, {-1, colNum/2}, {0, colNum/2}}},
+    {{{-2, colNum/2+2}, {-2, colNum/2+1}, {-2, colNum/2}, {-2, colNum/2-1}}},
+    {{{0, colNum/2+1}, {-1, colNum/2+1}, {-2, colNum/2+1}, {-3, colNum/2+1}}},
+    {{{-1, colNum/2-1}, {-1, colNum/2}, {-1, colNum/2+1}, {-1, colNum/2+2}}},
+};
+static const struct TetrisPosition OShape[] = {
+    {{{-1, colNum/2}, {-1, colNum/2+1}, {0, colNum/2+1}, {0, colNum/2}}},
+    {{{-1, colNum/2}, {-1, colNum/2+1}, {0, colNum/2+1}, {0, colNum/2}}},
+    {{{-1, colNum/2}, {-1, colNum/2+1}, {0, colNum/2+1}, {0, colNum/2}}},
+    {{{-1, colNum/2}, {-1, colNum/2+1}, {0, colNum/2+1}, {0, colNum/2}}},
+};
+static const struct TetrisPosition TShape[] = {
+    {{{-1, colNum/2-1}, {-1, colNum/2}, {-1, colNum/2+1}, {0, colNum/2}}},
+    {{{-2, colNum/2}, {-1, colNum/2-1}, {0, colNum/2}, {-1, colNum/2}}},
+    {{{-1, colNum/2+1}, {-1, colNum/2}, {-1, colNum/2-1}, {-2, colNum/2}}},
+    {{{0, colNum/2}, {-1, colNum/2}, {-2, colNum/2}, {-1, colNum/2+1}}},
+};
+static const struct TetrisPosition LShape[] = {
+    {{{-2, colNum/2}, {-1, colNum/2}, {0, colNum/2}, {0, colNum/2+1}}},
+    {{{-1, colNum/2+1}, {-1, colNum/2}, {-1, colNum/2-1}, {0, colNum/2-1}}},
+    {{{0, colNum/2}, {-1, colNum/2}, {-2, colNum/2}, {-2, colNum/2-1}}},
+    {{{-1, colNum/2-1}, {-1, colNum/2}, {-1, colNum/2+1}, {-2, colNum/2+1}}},
+};
+static const struct TetrisPosition JShape[] = {
+    {{{-2, colNum/2}, {-1, colNum/2}, {0, colNum/2}, {0, colNum/2-1}}},
+    {{{-1, colNum/2+1}, {-1, colNum/2}, {-1, colNum/2-1}, {-2, colNum/2-1}}},
+    {{{0, colNum/2}, {-1, colNum/2}, {-2, colNum/2}, {-2, colNum/2+1}}},
+    {{{-1, colNum/2-1}, {-1, colNum/2}, {-1, colNum/2+1}, {0, colNum/2+1}}},
+};
+static const struct TetrisPosition ZShape[] = {
+    {{{-1, colNum/2-1}, {-1, colNum/2}, {0, colNum/2}, {0, colNum/2+1}}},
+    {{{-2, colNum/2}, {-1, colNum/2}, {-1, colNum/2-1}, {0, colNum/2-1}}},
+    {{{-1, colNum/2+1}, {-1, colNum/2}, {-2, colNum/2}, {-2, colNum/2-1}}},
+    {{{0, colNum/2}, {-1, colNum/2}, {-1, colNum/2+1}, {-2, colNum/2+1}}},
+};
+static const struct TetrisPosition SShape[] = {
+    {{{-1, colNum/2+1}, {-1, colNum/2}, {0, colNum/2}, {0, colNum/2-1}}},
+    {{{0, colNum/2}, {-1, colNum/2}, {-1, colNum/2-1}, {-2, colNum/2-1}}},
+    {{{-1, colNum/2-1}, {-1, colNum/2}, {-2, colNum/2}, {-2, colNum/2+1}}},
+    {{{-2, colNum/2+1}, {-1, colNum/2+1}, {-1, colNum/2}, {0, colNum/2}}},
+};
+typedef const struct TetrisPosition (*pXShapes)[];
+pXShapes shapesArray[] =
+{&IShape, &OShape, &TShape, &LShape, &JShape, &ZShape, &SShape};
+static const int directionNum = 4;
 
 #ifdef DEBUG
 #define OutputString(string) OutputDebugString(string)
@@ -72,164 +121,17 @@ RECT GetRect(int minRow, int minCol, int maxRow, int maxCol)
 
 void InvalidateScene()
 {
-    RECT rect = GetRect(1, 1, rowNumber, colNumber);
+    RECT rect = GetRect(1, 1, rowNum, colNum);
     InvalidateRect(hWnd, &rect, FALSE);
-}
-
-BOOL RotateSquareCloskwize(
-        struct SquarePosition *pSquare, const struct SquarePosition *pCenter, BOOL detect)
-{
-    struct SquarePosition temp;
-    temp.row = pCenter->row + (pSquare->col - pCenter->col);
-    temp.col = pCenter->col + (pCenter->row - pSquare->row);
-    if (temp.row < 1 || temp.row > rowNumber
-            || temp.col < 1 || temp.col > colNumber)
-    {
-        if (detect)
-        {
-            return FALSE;
-        }
-    }
-    *pSquare = temp;
-    return TRUE;
-}
-
-BOOL RotateTetrisClockwize(BOOL detect)
-{
-    struct SquarePosition center = tetris.squares[0];
-    struct TetrisPosition temp = tetris;
-    int i=1;
-    for (; i!=squarePerTetris; ++i)
-    {
-        center.row += tetris.squares[i].row;
-        center.col += tetris.squares[i].col;
-    }
-    center.row /= 1.0 * squarePerTetris;
-    center.col /= 1.0 * squarePerTetris;
-    for (i=0; i!=squarePerTetris; ++i)
-    {
-        if (!RotateSquareCloskwize(&temp.squares[i], &center, detect))
-        {
-            return FALSE;
-        }
-    }
-    OutputString("Pre RotateTetrisClockwize\n");
-    OutputTetrisPosition();
-    tetris = temp;
-    OutputString("Post RotateTetrisClockwize\n");
-    OutputTetrisPosition();
-    return TRUE;
-}
-
-BOOL FlipTetrisHorizontally(BOOL detect)
-{
-    struct TetrisPosition temp = tetris;
-    int i=1;
-    int centerCol = tetris.squares[0].col;
-    for (; i!=squarePerTetris; ++i)
-    {
-        centerCol += tetris.squares[i].col;
-    }
-    centerCol /= 1.0 * squarePerTetris;
-    for (i=0; i!=squarePerTetris; ++i)
-    {
-        temp.squares[i].col = 2 * centerCol - tetris.squares[i].col;
-        if (temp.squares[i].col < 1 || temp.squares[i].col > colNumber)
-        {
-            if (detect)
-            {
-                return FALSE;
-            }
-        }
-    }
-    OutputString("Pre FlipTetrisHorizontally\n");
-    OutputTetrisPosition();
-    tetris = temp;
-    OutputString("Post FlipTetrisHorizontally\n");
-    OutputTetrisPosition();
-    return TRUE;
-}
-
-BOOL FlipTetrisVertically(BOOL detect)
-{
-    struct TetrisPosition temp = tetris;
-    int i=1;
-    int centerRow = tetris.squares[0].row;
-    for (; i!=squarePerTetris; ++i)
-    {
-        centerRow += tetris.squares[i].row;
-    }
-    centerRow /= 1.0 * squarePerTetris;
-    for (i=0; i!=squarePerTetris; ++i)
-    {
-        temp.squares[i].row = 2 * centerRow - tetris.squares[i].row;
-        if (temp.squares[i].row < 1 || temp.squares[i].row > rowNumber)
-        {
-            if (detect)
-            {
-                return FALSE;
-            }
-        }
-    }
-    OutputString("Pre FlipTetrisVertically\n");
-    OutputTetrisPosition();
-    tetris = temp;
-    OutputString("Post FlipTetrisVertically\n");
-    OutputTetrisPosition();
-    return TRUE;
-}
-
-BOOL NotAdjustTetris(BOOL detect)
-{
-    return TRUE;
 }
 
 void GenerateTetris()
 {
     int i = 0;
-    static const struct TetrisPosition IShape = {{
-        {-3, colNumber / 2},
-        {-2, colNumber / 2},
-        {-1, colNumber / 2},
-        {0, colNumber / 2},
-    }};
-    static const struct TetrisPosition OShape = {{
-        {-1, colNumber / 2 - 1},
-        {0, colNumber / 2 - 1},
-        {-1, colNumber / 2},
-        {0, colNumber / 2},
-    }};
-    static const struct TetrisPosition LShape = {{
-        {-2, colNumber / 2 - 1},
-        {-1, colNumber / 2 - 1},
-        {0, colNumber / 2 - 1},
-        {0, colNumber / 2},
-    }};
-    static const struct TetrisPosition TShape = {{
-        {-1, colNumber / 2 - 1},
-        {-1, colNumber / 2},
-        {0, colNumber / 2},
-        {-1, colNumber / 2 + 1},
-    }};
-    static const struct TetrisPosition ZShape = {{
-        {-1, colNumber / 2 - 1},
-        {-1, colNumber / 2},
-        {0, colNumber / 2},
-        {0, colNumber / 2 + 1},
-    }};
-    static const struct TetrisPosition *pShapes[] =
-    {&IShape, &OShape, &LShape, &TShape, &ZShape};
-    int index = (int)(rand()*(sizeof(pShapes)/sizeof(pShapes[0]))/(RAND_MAX+1.0));
-    const struct TetrisPosition *pShape = pShapes[index];
-    for (; i!= squarePerTetris; ++i)
-    {
-        tetris.squares[i].row = pShape->squares[i].row;
-        tetris.squares[i].col = pShape->squares[i].col;
-    }
-    typedef BOOL (*AdjustFunc)();
-    static const AdjustFunc func[] = {&NotAdjustTetris, &RotateTetrisClockwize,
-    &FlipTetrisHorizontally, &FlipTetrisVertically};
-    func[(int)(rand()*(sizeof(func)/sizeof(func[0]))/(RAND_MAX+1.0))](FALSE);
+    shape = (int)(1.0*rand()*(sizeof(shapesArray)/sizeof(shapesArray[0]))/(RAND_MAX+1.0));
+    const pXShapes pShapes = shapesArray[shape];
+    direction = (int)(rand()*4.0/(RAND_MAX+1.0));
+    tetris = (*pShapes)[direction];
 }
 
 void InitDraw(HDC hDC)
@@ -245,8 +147,8 @@ void InitDraw(HDC hDC)
 
 void DrawScene()
 {
-    const int sceneWidth = colNumber * squareSideLength;
-    const int sceneHeight = rowNumber * squareSideLength;
+    const int sceneWidth = colNum * squareSideLength;
+    const int sceneHeight = rowNum * squareSideLength;
     POINT points[5];
     points[0].x = leftPadding-squareBorder;
     points[0].y = topPadding-squareBorder;
@@ -264,8 +166,8 @@ void DrawScene()
 
 BOOL DrawSquare(int row, int col)
 {
-    if (row > rowNumber || row < 1 ||
-            col > colNumber || col < 1) {
+    if (row > rowNum || row < 1 ||
+            col > colNum || col < 1) {
         return FALSE;
     }
     SelectObject(hPaintDC, hSquareBorderPen);
@@ -295,8 +197,8 @@ void DrawTetris()
 void DrawFilledSquares()
 {
     int i, j;
-    for (i = 0; i!=rowNumber; ++i) {
-        for (j = 0; j!=colNumber; j++) {
+    for (i = 0; i!=rowNum; ++i) {
+        for (j = 0; j!=colNum; j++) {
             if (squareFilled[i][j])
             {
                 DrawSquare(i+1, j+1);
@@ -319,6 +221,34 @@ void OnDraw(HDC hDC)
     DrawFilledSquares();
 
     BitBlt(hDC, 0, 0, width, height, hPaintDC, 0, 0, SRCCOPY);
+}
+BOOL IsSquareInScene(const struct SquarePosition *pSquare)
+{
+    return pSquare->row > 0 && pSquare->row <= rowNum
+        && pSquare->col > 0 && pSquare->col <= colNum;
+}
+
+BOOL RotateTetrisClockwize()
+{
+    int i = 0;
+    const pXShapes pShapes = shapesArray[shape];
+    int oldDir = direction;
+    int newDir = (oldDir+1)%directionNum;
+    struct TetrisPosition temp = tetris;
+    for (; i!=squarePerTetris; ++i)
+    {
+        temp.squares[i].row += (*pShapes)[newDir].squares[i].row
+            - (*pShapes)[oldDir].squares[i].row;
+        temp.squares[i].col += (*pShapes)[newDir].squares[i].col
+            - (*pShapes)[oldDir].squares[i].col;
+        if (!IsSquareInScene(&temp.squares[i]))
+        {
+            return FALSE;
+        }
+    }
+    tetris = temp;
+    direction = (direction+1) % directionNum;
+    return TRUE;
 }
 
 BOOL FillSquares()
@@ -357,7 +287,7 @@ BOOL MoveTetrisDown()
     int i = 0;
     for (; i!=squarePerTetris; ++i)
     {
-        if (temp.squares[i].row < rowNumber)
+        if (temp.squares[i].row < rowNum)
         {
             if (temp.squares[i].row > 0 &&
                     squareFilled[temp.squares[i].row][temp.squares[i].col-1])
@@ -381,8 +311,8 @@ BOOL MoveTetrisLeft()
     int i = 0;
     for (; i!=squarePerTetris; ++i)
     {
-         if ((temp.squares[i].col > 1) &&
-        !squareFilled[temp.squares[i].row-1][temp.squares[i].col-2])
+        if ((temp.squares[i].col > 1) &&
+                !squareFilled[temp.squares[i].row-1][temp.squares[i].col-2])
         {
             --temp.squares[i].col;
         }
@@ -401,8 +331,8 @@ BOOL MoveTetrisRight()
     int i = 0;
     for (; i!=squarePerTetris; ++i)
     {
-         if ((temp.squares[i].col < colNumber) &&
-        !squareFilled[temp.squares[i].row-1][temp.squares[i].col])
+        if ((temp.squares[i].col < colNum) &&
+                !squareFilled[temp.squares[i].row-1][temp.squares[i].col])
         {
             ++temp.squares[i].col;
         }
@@ -424,7 +354,7 @@ BOOL MoveTetrisToBottom()
     {
         for (i=0; i!=squarePerTetris; ++i)
         {
-            if (tetris.squares[i].row >= rowNumber ||
+            if (tetris.squares[i].row >= rowNum ||
                     squareFilled[tetris.squares[i].row][tetris.squares[i].col-1])
             {
                 canMoveDown = FALSE;
@@ -446,7 +376,7 @@ BOOL MoveTetrisToBottom()
 BOOL ClearRow(int row)
 {
     int j = 0;
-    for (; j!=colNumber; ++j)
+    for (; j!=colNum; ++j)
     {
         if (!squareFilled[row-1][j])
         {
@@ -460,18 +390,18 @@ BOOL MoveFilledSquaresDown(int maxRow)
 {
     int i = maxRow;
     int j = 0;
-    if (maxRow >= rowNumber || maxRow < 1)
+    if (maxRow >= rowNum || maxRow < 1)
     {
         return FALSE;
     }
     for (; i!=0; --i)
     {
-        for (j=0; j!=colNumber; ++j)
+        for (j=0; j!=colNum; ++j)
         {
             squareFilled[i][j] = squareFilled[i-1][j];
         }
     }
-    for (j=0; j!=colNumber; ++j)
+    for (j=0; j!=colNum; ++j)
     {
         squareFilled[0][j] = FALSE;
     }
@@ -482,9 +412,9 @@ LRESULT OnCreate()
 {
     int i, j;
     srand(time(NULL));
-    for (i=0; i!=rowNumber; ++i)
+    for (i=0; i!=rowNum; ++i)
     {
-        for (j=0; j!=colNumber; ++j)
+        for (j=0; j!=colNum; ++j)
         {
             squareFilled[i][j] = FALSE;
         }
@@ -521,7 +451,7 @@ LRESULT OnTimer()
     {
         if (FillSquares())
         {
-            int row = rowNumber;
+            int row = rowNum;
             while (row != 0)
             {
                 if (ClearRow(row))
@@ -538,7 +468,7 @@ LRESULT OnTimer()
         else
         {
             DestroyWindow(hWnd);
-            return;
+            return 0;
         }
     }
     InvalidateScene();
@@ -581,7 +511,7 @@ LRESULT OnKeyDown(WPARAM wParam)
     }
     else if (wParam == VK_UP)
     {
-        if (RotateTetrisClockwize(TRUE))
+        if (RotateTetrisClockwize())
         {
             InvalidateScene();
         }
@@ -635,8 +565,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
     hInst = hInstance;
     hWnd = CreateWindow(pWindowClass, pTitle, WS_OVERLAPPEDWINDOW,
-                        CW_USEDEFAULT, CW_USEDEFAULT, width, height, NULL, NULL,
-                        hInstance, NULL);
+            CW_USEDEFAULT, CW_USEDEFAULT, width, height, NULL, NULL,
+            hInstance, NULL);
     if (NULL == hWnd)
     {
         return FALSE;
@@ -651,9 +581,9 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 }
 
 int APIENTRY WinMain(HINSTANCE hInstance,
-                     HINSTANCE hPrevInstance,
-                     LPSTR lpCmdline,
-                     int nCmdShow)
+        HINSTANCE hPrevInstance,
+        LPSTR lpCmdline,
+        int nCmdShow)
 {
     MSG msg;
 
