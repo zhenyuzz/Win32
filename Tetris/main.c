@@ -2,32 +2,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-HINSTANCE hInst;
-HWND      hWnd;
-HBRUSH    hBackgroundBrush;
-HBRUSH    hSquareBrush;
-HPEN      hSquareBorderPen;
-HPEN      hSceneBorderPen;
-HFONT     hTextFont;
-HFONT     hGameOverFont;
-HDC       hDC;
-HDC       hPaintDC;
-HBITMAP   hBitmap;
 LPCSTR pTitle       = "Tetris";
 LPCSTR pWindowClass = "Tetris";
-static const COLORREF textColor       = RGB(255, 255, 255);
-static const COLORREF gameOverColor   = RGB(255,   0,   0);
-static const COLORREF backgroundColor = RGB(  0,   0,   0);
-static const COLORREF borderColor     = RGB(255, 255, 255);
-static const COLORREF squareColor     = RGB(  0, 255,   0);
-static const int width              = 400;
-static const int height             = 480;
-static const int sceneBorder        = 2;
-static const int squareBorder       = 1;
-static const int squareSideLength   = 20;
-static const int topPadding         = 20;
-static const int leftPadding        = 20;
-static const int timerID            = 2015;
+static const COLORREF textColor          = RGB(255, 255, 255);
+static const COLORREF gameOverColor      = RGB(255,   0,   0);
+static const COLORREF backgroundColor    = RGB(  0,   0,   0);
+static const COLORREF borderColor        = RGB(255, 255, 255);
+static const int width            = 400;
+static const int height           = 480;
+static const int sceneBorder      = 2;
+static const int squareBorder     = 1;
+static const int squareSideLength = 20;
+static const int topPadding       = 20;
+static const int leftPadding      = 20;
+static const int timerID          = 2015;
 struct SquarePosition
 {
     int row;
@@ -45,6 +33,7 @@ int nextDirection;
 enum {rowNum = 20};
 enum {colNum = 10};
 BOOL squareFilled[rowNum][colNum];
+COLORREF filledShape[rowNum][colNum];
 int minFilledRow, minFilledCol, maxFilledCol;
 
 static const struct TetrisPosition IShape[] = {
@@ -87,12 +76,27 @@ static const struct TetrisPosition SShape[] = {
     {{{-1, colNum/2+1}, {-1, colNum/2}, {0, colNum/2}, {0, colNum/2-1}}},
     {{{0, colNum/2}, {-1, colNum/2}, {-1, colNum/2-1}, {-2, colNum/2-1}}},
     {{{-1, colNum/2-1}, {-1, colNum/2}, {-2, colNum/2}, {-2, colNum/2+1}}},
-    {{{-2, colNum/2+1}, {-1, colNum/2+1}, {-1, colNum/2}, {0, colNum/2}}},
+    {{{-2, colNum/2-1}, {-1, colNum/2-1}, {-1, colNum/2}, {0, colNum/2}}},
 };
 typedef const struct TetrisPosition (*pXShapes)[];
 pXShapes shapesArray[] =
 {&IShape, &OShape, &TShape, &LShape, &JShape, &ZShape, &SShape};
 static const int directionNum = 4;
+static const COLORREF squareColor[] = {RGB(255, 0, 0), RGB(255, 165, 0),
+    RGB(222, 222, 0), RGB(0, 255, 0), RGB(0, 127, 255), RGB(0, 0, 255),
+    RGB(139, 0, 255)};
+
+HINSTANCE hInst;
+HWND      hWnd;
+HBRUSH    hBackgroundBrush;
+HBRUSH    hSquareBrush[sizeof(squareColor)/sizeof(squareColor[0])];
+HPEN      hSquareBorderPen;
+HPEN      hSceneBorderPen;
+HFONT     hTextFont;
+HFONT     hGameOverFont;
+HDC       hDC;
+HDC       hPaintDC;
+HBITMAP   hBitmap;
 
 int level;
 int points;
@@ -167,13 +171,17 @@ void GenerateTetris()
 
 void InitDraw(HDC hDC)
 {
+    int i = 0;
     hPaintDC = CreateCompatibleDC(hDC);
     hBitmap  = CreateCompatibleBitmap(hDC, width, height);
     SelectObject(hPaintDC, hBitmap);
     hBackgroundBrush = CreateSolidBrush(backgroundColor);
     hSceneBorderPen  = CreatePen(PS_SOLID, sceneBorder, borderColor);
     hSquareBorderPen = CreatePen(PS_SOLID, squareBorder, borderColor);
-    hSquareBrush     = CreateSolidBrush(squareColor);
+    for (; i!=sizeof(hSquareBrush)/sizeof(hSquareBrush[0]); ++i)
+    {
+        hSquareBrush[i] = CreateSolidBrush(squareColor[i]);
+    }
     hTextFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, 0, ANSI_CHARSET,
             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, PROOF_QUALITY,
             DEFAULT_PITCH | FF_SWISS, "Arial");
@@ -206,7 +214,7 @@ void DrawNextTetris()
     int originalY = infoRect.top + textHeight;
 
     SelectObject(hPaintDC, hSquareBorderPen);
-    SelectObject(hPaintDC, hSquareBrush);
+    SelectObject(hPaintDC, hSquareBrush[nextShape]);
     for (; i != squarePerTetris; ++i) {
         row = nextTetris.squares[i].row + 4;
         col = nextTetris.squares[i].col - colNum/2 + 2;
@@ -282,8 +290,6 @@ BOOL DrawSquare(int row, int col)
             col > colNum || col < 1) {
         return FALSE;
     }
-    SelectObject(hPaintDC, hSquareBorderPen);
-    SelectObject(hPaintDC, hSquareBrush);
     POINT points[5];
     points[0].x = leftPadding+(col-1)*squareSideLength;
     points[0].y = topPadding+(row-1)*squareSideLength;
@@ -299,6 +305,8 @@ BOOL DrawSquare(int row, int col)
 
 void DrawTetris()
 {
+    SelectObject(hPaintDC, hSquareBorderPen);
+    SelectObject(hPaintDC, hSquareBrush[shape]);
     int i = 0;
     for (; i!=squarePerTetris; ++i)
     {
@@ -308,11 +316,13 @@ void DrawTetris()
 
 void DrawFilledSquares()
 {
+    SelectObject(hPaintDC, hSquareBorderPen);
     int i, j;
     for (i = 0; i!=rowNum; ++i) {
         for (j = 0; j!=colNum; j++) {
             if (squareFilled[i][j])
             {
+                SelectObject(hPaintDC, hSquareBrush[filledShape[i][j]]);
                 DrawSquare(i+1, j+1);
             }
         }
@@ -396,6 +406,7 @@ BOOL FillSquares()
                 maxFilledCol = col;
             }
             squareFilled[row-1][col-1] = TRUE;
+            filledShape[row-1][col-1] = shape;
         }
     }
     return TRUE;
@@ -523,6 +534,7 @@ BOOL MoveFilledSquaresDown(int maxRow)
         for (j=0; j!=colNum; ++j)
         {
             squareFilled[i][j] = squareFilled[i-1][j];
+            filledShape[i][j] = filledShape[i-1][j];
         }
     }
     for (j=0; j!=colNum; ++j)
@@ -550,6 +562,7 @@ void OnStart()
     nextDirection = (int)(1.0*rand()*directionNum/(RAND_MAX+1.0));
     GenerateTetris();
     stopped = FALSE;
+    paused = FALSE;
     InvalidateInfo();
     InvalidateScene();
     SetTimer(hWnd, timerID, moveInterval, NULL);
